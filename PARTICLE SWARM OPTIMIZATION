@@ -1,0 +1,108 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# -----------------------------
+# Define Environment
+# -----------------------------
+GRID_SIZE = 20
+START = (0, 0)
+GOAL = (18, 18)
+
+# Obstacles (rectangles defined by x1, y1, x2, y2)
+OBSTACLES = [
+    (5, 5, 10, 10),
+    (12, 2, 14, 12),
+    (3, 15, 15, 16)
+]
+
+def is_collision(path):
+    """Check if path collides with obstacles"""
+    for (x1, y1, x2, y2) in OBSTACLES:
+        for (x, y) in path:
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                return True
+    return False
+
+def path_length(path):
+    """Calculate total path length"""
+    length = 0
+    for i in range(len(path)-1):
+        length += np.linalg.norm(np.array(path[i+1]) - np.array(path[i]))
+    return length
+
+def fitness(path):
+    """Fitness = length + collision penalty"""
+    L = path_length(path)
+    penalty = 1000 if is_collision(path) else 0
+    return L + penalty
+
+# -----------------------------
+# PSO Parameters
+# -----------------------------
+NUM_PARTICLES = 5
+MAX_ITER = 10
+w = 0.5       # inertia
+c1 = 1.5      # cognitive
+c2 = 1.5      # social
+NUM_WAYPOINTS = 5   # intermediate points between start and goal
+
+# -----------------------------
+# Initialize Swarm
+# -----------------------------
+particles = [np.random.rand(NUM_WAYPOINTS, 2) * GRID_SIZE for _ in range(NUM_PARTICLES)]
+velocities = [np.random.randn(NUM_WAYPOINTS, 2) for _ in range(NUM_PARTICLES)]
+
+# Add start and goal to paths
+def construct_path(waypoints):
+    return [START] + [tuple(map(int, wp)) for wp in waypoints] + [GOAL]
+
+pbest = particles.copy()
+pbest_scores = [fitness(construct_path(p)) for p in particles]
+
+gbest = pbest[np.argmin(pbest_scores)]
+gbest_score = min(pbest_scores)
+
+# -----------------------------
+# PSO Main Loop
+# -----------------------------
+for iteration in range(MAX_ITER):
+    for i in range(NUM_PARTICLES):
+        # Update velocity
+        r1, r2 = np.random.rand(), np.random.rand()
+        velocities[i] = (w * velocities[i] +
+                         c1 * r1 * (pbest[i] - particles[i]) +
+                         c2 * r2 * (gbest - particles[i]))
+
+        # Update position
+        particles[i] += velocities[i]
+        particles[i] = np.clip(particles[i], 0, GRID_SIZE)  # keep inside grid
+
+        # Evaluate
+        path = construct_path(particles[i])
+        score = fitness(path)
+
+        # Update personal best
+        if score < pbest_scores[i]:
+            pbest[i] = particles[i].copy()
+            pbest_scores[i] = score
+
+    # Update global best
+    best_idx = np.argmin(pbest_scores)
+    if pbest_scores[best_idx] < gbest_score:
+        gbest = pbest[best_idx].copy()
+        gbest_score = pbest_scores[best_idx]
+
+    print(f"Iteration {iteration+1}/{MAX_ITER}, Best Score: {gbest_score}")
+
+OUTPUT:
+
+Iteration 1/10, Best Score: 69.16978270367734
+Iteration 2/10, Best Score: 63.31920302816292
+Iteration 3/10, Best Score: 63.31920302816292
+Iteration 4/10, Best Score: 63.31920302816292
+Iteration 5/10, Best Score: 63.31920302816292
+Iteration 6/10, Best Score: 63.31920302816292
+Iteration 7/10, Best Score: 63.31920302816292
+Iteration 8/10, Best Score: 63.008310848855395
+Iteration 9/10, Best Score: 62.64438278237012
+Iteration 10/10, Best Score: 62.64438278237012
