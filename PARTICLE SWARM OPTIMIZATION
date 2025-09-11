@@ -1,108 +1,185 @@
+
 import numpy as np
 import matplotlib.pyplot as plt
+from math import hypot
 
-# -----------------------------
-# Define Environment
-# -----------------------------
-GRID_SIZE = 20
-START = (0, 0)
-GOAL = (18, 18)
+# =========================
+# ENVIRONMENT SETUP
+# =========================
+GRID_SIZE = 20         # Size of the grid
+NUM_ROBOTS = 3         # Number of robots
 
-# Obstacles (rectangles defined by x1, y1, x2, y2)
+# Start and goal positions for each robot
+STARTS = [(0, 0), (0, 18), (18, 0)]
+GOALS  = [(18, 18), (18, 2), (2, 18)]
+
+# Obstacles defined as rectangles: (x1, y1, x2, y2)
 OBSTACLES = [
     (5, 5, 10, 10),
     (12, 2, 14, 12),
     (3, 15, 15, 16)
 ]
 
-def is_collision(path):
-    """Check if path collides with obstacles"""
-    for (x1, y1, x2, y2) in OBSTACLES:
-        for (x, y) in path:
-            if x1 <= x <= x2 and y1 <= y <= y2:
+# Collision parameters
+ROBOT_COLLISION_DIST = 1.5   # Robots too close → collision
+COLLISION_PENALTY = 1000     # Penalty for collisions
+
+
+# =========================
+# HELPER FUNCTIONS
+# =========================
+def point_in_rect(pt, rect):
+    """Check if point is inside rectangle obstacle."""
+    x, y = pt
+    x1, y1, x2, y2 = rect
+    return (x1 <= x <= x2) and (y1 <= y <= y2)
+
+def segment_collides_with_obstacles(p1, p2):
+    """Check if a line segment intersects with any obstacle."""
+    samples = 10
+    for t in np.linspace(0, 1, samples):
+        x = p1[0] + t*(p2[0]-p1[0])
+        y = p1[1] + t*(p2[1]-p1[1])
+        for rect in OBSTACLES:
+            if point_in_rect((x, y), rect):
                 return True
     return False
 
-def path_length(path):
-    """Calculate total path length"""
-    length = 0
+def path_collides(path):
+    """Check if any segment of the path collides with obstacles."""
     for i in range(len(path)-1):
-        length += np.linalg.norm(np.array(path[i+1]) - np.array(path[i]))
-    return length
+        if segment_collides_with_obstacles(path[i], path[i+1]):
+            return True
+    return False
 
-def fitness(path):
-    """Fitness = length + collision penalty"""
-    L = path_length(path)
-    penalty = 1000 if is_collision(path) else 0
-    return L + penalty
+def path_length(path):
+    """Compute total length of a path."""
+    return sum(hypot(path[i+1][0]-path[i][0], path[i+1][1]-path[i][1])
+               for i in range(len(path)-1))
 
-# -----------------------------
-# PSO Parameters
-# -----------------------------
-NUM_PARTICLES = 5
-MAX_ITER = 10
-w = 0.5       # inertia
-c1 = 1.5      # cognitive
-c2 = 1.5      # social
-NUM_WAYPOINTS = 5   # intermediate points between start and goal
 
-# -----------------------------
-# Initialize Swarm
-# -----------------------------
-particles = [np.random.rand(NUM_WAYPOINTS, 2) * GRID_SIZE for _ in range(NUM_PARTICLES)]
-velocities = [np.random.randn(NUM_WAYPOINTS, 2) for _ in range(NUM_PARTICLES)]
+# =========================
+# PSO PARAMETERS
+# =========================
+NUM_PARTICLES = 40      # Swarm size
+MAX_ITER = 120          # Iterations
+w = 0.6                 # Inertia weight
+c1 = 1.4                # Cognitive coefficient
+c2 = 1.4                # Social coefficient
+NUM_WAYPOINTS = 4       # Number of waypoints per robot
 
-# Add start and goal to paths
-def construct_path(waypoints):
-    return [START] + [tuple(map(int, wp)) for wp in waypoints] + [GOAL]
 
-pbest = particles.copy()
-pbest_scores = [fitness(construct_path(p)) for p in particles]
+# =========================
+# PARTICLE REPRESENTATION
+# =========================
+def construct_paths(particle):
+    """
+    Convert particle into actual robot paths.
+    Each robot path = [start] + waypoints + [goal]
+    """
+    paths = []
+    for r in range(NUM_ROBOTS):
+        wpts = particle[r]
+        # Clip waypoints inside grid
+        wpts = [(float(np.clip(x, 0, GRID_SIZE)), float(np.clip(y, 0, GRID_SIZE)))
+                for (x, y) in wpts]
+        path = [STARTS[r]] + wpts + [GOALS[r]]
+        paths.append(path)
+    return paths
 
-gbest = pbest[np.argmin(pbest_scores)]
-gbest_score = min(pbest_scores)
+def fitness(particle):
+    """Fitness = total path length + penalties for collisions."""
+    paths = construct_paths(particle)
+    total_length = sum(path_length(p) for p in paths)
+    penalty = 0
 
-# -----------------------------
-# PSO Main Loop
-# -----------------------------
+    # Penalty if path hits obstacle
+    for p in paths:
+        if path_collides(p):
+            penalty += COLLISION_PENALTY
+
+    # Penalty if robots collide (same timestep)
+    timesteps = NUM_WAYPOINTS + 2
+    for t in range(timesteps):
+        positions = [paths[r][t] for r in range(NUM_ROBOTS)]
+        for i in range(NUM_ROBOTS):
+            for j in range(i+1, NUM_ROBOTS):
+                d = hypot(positions[i][0]-positions[j][0], positions[i][1]-positions[j][1])
+                if d < ROBOT_COLLISION_DIST:
+                    penalty += COLLISION_PENALTY
+
+    return total_length + penalty
+
+
+# =========================
+# SWARM INITIALIZATION
+# =========================
+particles = [np.random.rand(NUM_ROBOTS, NUM_WAYPOINTS, 2) * GRID_SIZE
+             for _ in range(NUM_PARTICLES)]
+velocities = [np.random.randn(NUM_ROBOTS, NUM_WAYPOINTS, 2) * 0.5
+              for _ in range(NUM_PARTICLES)]
+
+pbest = [p.copy() for p in particles]
+pbest_scores = [fitness(p) for p in particles]
+
+best_idx = int(np.argmin(pbest_scores))
+gbest = pbest[best_idx].copy()
+gbest_score = pbest_scores[best_idx]
+
+print(f"Initial best score: {gbest_score:.2f}")
+
+
+# =========================
+# PSO MAIN LOOP
+# =========================
 for iteration in range(MAX_ITER):
     for i in range(NUM_PARTICLES):
-        # Update velocity
-        r1, r2 = np.random.rand(), np.random.rand()
+        r1 = np.random.rand(NUM_ROBOTS, NUM_WAYPOINTS, 2)
+        r2 = np.random.rand(NUM_ROBOTS, NUM_WAYPOINTS, 2)
+
+        # Update velocity & position
         velocities[i] = (w * velocities[i] +
                          c1 * r1 * (pbest[i] - particles[i]) +
                          c2 * r2 * (gbest - particles[i]))
-
-        # Update position
         particles[i] += velocities[i]
-        particles[i] = np.clip(particles[i], 0, GRID_SIZE)  # keep inside grid
+
+        # Keep inside grid
+        particles[i] = np.clip(particles[i], 0, GRID_SIZE)
 
         # Evaluate
-        path = construct_path(particles[i])
-        score = fitness(path)
-
-        # Update personal best
+        score = fitness(particles[i])
         if score < pbest_scores[i]:
             pbest[i] = particles[i].copy()
             pbest_scores[i] = score
 
     # Update global best
-    best_idx = np.argmin(pbest_scores)
+    best_idx = int(np.argmin(pbest_scores))
     if pbest_scores[best_idx] < gbest_score:
         gbest = pbest[best_idx].copy()
         gbest_score = pbest_scores[best_idx]
 
-    print(f"Iteration {iteration+1}/{MAX_ITER}, Best Score: {gbest_score}")
+    # Print progress
+    if (iteration+1) % 10 == 0 or iteration == 0:
+        print(f"Iter {iteration+1}/{MAX_ITER} - Best score: {gbest_score:.2f}")
+
+print("Optimization finished.")
+print("Final best score:", gbest_score)
+
 
 OUTPUT:
-
-Iteration 1/10, Best Score: 69.16978270367734
-Iteration 2/10, Best Score: 63.31920302816292
-Iteration 3/10, Best Score: 63.31920302816292
-Iteration 4/10, Best Score: 63.31920302816292
-Iteration 5/10, Best Score: 63.31920302816292
-Iteration 6/10, Best Score: 63.31920302816292
-Iteration 7/10, Best Score: 63.31920302816292
-Iteration 8/10, Best Score: 63.008310848855395
-Iteration 9/10, Best Score: 62.64438278237012
-Iteration 10/10, Best Score: 62.64438278237012
+Initial best score: 2158.32
+Iter 1/120 - Best score: 2157.45
+Iter 10/120 - Best score: 1122.47
+Iter 20/120 - Best score: 1104.56
+Iter 30/120 - Best score: 97.85
+Iter 40/120 - Best score: 95.38
+Iter 50/120 - Best score: 94.20
+Iter 60/120 - Best score: 92.92
+Iter 70/120 - Best score: 92.61
+Iter 80/120 - Best score: 91.66
+Iter 90/120 - Best score: 89.14
+Iter 100/120 - Best score: 88.33
+Iter 110/120 - Best score: 88.18
+Iter 120/120 - Best score: 87.98
+Optimization finished.
+Final best score: 87.9792305499555
