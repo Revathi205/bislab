@@ -1,0 +1,100 @@
+import numpy as np
+
+# Objective Function (Sphere function)
+def sphere_function(x):
+    return np.sum(x**2)
+
+# Grey Wolf Optimizer
+def GWO(obj_func, dim, lb, ub, num_wolves=10, max_iter=50):
+    # Initialize Alpha, Beta, Delta wolves
+    Alpha_pos = np.zeros(dim)
+    Beta_pos = np.zeros(dim)
+    Delta_pos = np.zeros(dim)
+    Alpha_score = float("inf")
+    Beta_score = float("inf")
+    Delta_score = float("inf")
+
+    # Initialize wolf positions randomly
+    Wolves = np.random.uniform(0, 1, (num_wolves, dim)) * (ub - lb) + lb
+
+    # Main loop
+    for t in range(max_iter):
+        for i in range(num_wolves):
+            # Keep wolves within bounds
+            Wolves[i] = np.clip(Wolves[i], lb, ub)
+
+            # Evaluate fitness
+            fitness = obj_func(Wolves[i])
+
+            # Update Alpha, Beta, Delta
+            if fitness < Alpha_score:
+                Alpha_score = fitness
+                Alpha_pos = Wolves[i].copy()
+            elif fitness < Beta_score:
+                Beta_score = fitness
+                Beta_pos = Wolves[i].copy()
+            elif fitness < Delta_score:
+                Delta_score = fitness
+                Delta_pos = Wolves[i].copy()
+
+        # Update 'a' linearly
+        a = 2 - t * (2 / max_iter)
+
+        # Update positions of wolves
+        for i in range(num_wolves):
+            for j in range(dim):
+                r1, r2 = np.random.rand(), np.random.rand()
+                A1 = 2 * a * r1 - a
+                C1 = 2 * r2
+                D_alpha = abs(C1 * Alpha_pos[j] - Wolves[i, j])
+                X1 = Alpha_pos[j] - A1 * D_alpha
+
+                r1, r2 = np.random.rand(), np.random.rand()
+                A2 = 2 * a * r1 - a
+                C2 = 2 * r2
+                D_beta = abs(C2 * Beta_pos[j] - Wolves[i, j])
+                X2 = Beta_pos[j] - A2 * D_beta
+
+                r1, r2 = np.random.rand(), np.random.rand()
+                A3 = 2 * a * r1 - a
+                C3 = 2 * r2
+                D_delta = abs(C3 * Delta_pos[j] - Wolves[i, j])
+                X3 = Delta_pos[j] - A3 * D_delta
+
+                Wolves[i, j] = (X1 + X2 + X3) / 3
+
+        print(f"Iteration {t+1}, Best Fitness: {Alpha_score:.6f}")
+
+    print("\nBest solution found:")
+    print("Position:", Alpha_pos)
+    print("Fitness value:", Alpha_score)
+
+    return Alpha_pos, Alpha_score
+
+# Run GWO for Sphere Function Minimization
+if __name__ == "__main__":
+    dim = 5 # Number of variables
+    lb = -10 # Lower bound
+    ub = 10 # Upper bound
+    num_wolves = 5
+    max_iter = 10
+
+    best_position, best_fitness = GWO(sphere_function, dim, lb, ub, num_wolves, max_iter)
+
+
+
+OUTPUT:
+Iteration 1, Best Fitness: 155.408845
+Iteration 2, Best Fitness: 107.780706
+Iteration 3, Best Fitness: 107.780706
+Iteration 4, Best Fitness: 83.424573
+Iteration 5, Best Fitness: 36.651100
+Iteration 6, Best Fitness: 36.651100
+Iteration 7, Best Fitness: 26.420319
+Iteration 8, Best Fitness: 24.182184
+Iteration 9, Best Fitness: 24.182184
+Iteration 10, Best Fitness: 24.182184
+
+Best solution found:
+Position: [ 1.41861007  2.62022185  1.07130692  0.52607922 -3.72554813]
+Fitness value: 24.182183817985155
