@@ -1,0 +1,50 @@
+import random
+
+# Function to minimize
+def f(x):
+    return (x - 3)**2 + 2
+
+# Parameters
+num_cells = 10 # number of cells
+num_iterations = 50 # number of iterations
+alpha = 0.5 # learning rate
+search_min, search_max = -10, 10 # search range
+
+# Step 1: Initialize cells with random positions
+cells = [random.uniform(search_min, search_max) for _ in range(num_cells)]
+fitness = [f(x) for x in cells]
+
+# Step 2: Main loop
+for t in range(num_iterations):
+    new_cells = []
+    for i in range(num_cells):
+        # Find neighbor indices (left and right)
+        left = (i - 1) % num_cells
+        right = (i + 1) % num_cells
+
+        # Find the best neighbor (minimum fitness)
+        neighbors = [cells[left], cells[right]]
+        best_neighbor = min(neighbors, key=f)
+
+        # Update cell based on best neighbor
+        new_x = cells[i] + alpha * (best_neighbor - cells[i])
+
+        # Replace with new position if fitness improves
+        if f(new_x) < f(cells[i]):
+            new_cells.append(new_x)
+        else:
+            new_cells.append(cells[i])
+
+    # Update all cells together (parallel update)
+    cells = new_cells
+    fitness = [f(x) for x in cells]
+
+# Step 3: Find and print the best solution
+best_cell = min(cells, key=f)
+print("Best solution (x):", best_cell)
+print("Minimum value f(x):", f(best_cell))
+
+
+OUTPUT:
+Best solution (x): 3.0000000090886743
+Minimum value f(x): 2.0
